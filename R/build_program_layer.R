@@ -3,7 +3,7 @@
 #
 # Processes one monitoring program's CSV files into a hex grid GeoJSON.
 #
-# Run once per program 
+# Run once per program
 # After all programs are processed, run build_combined_map.R to combine everything.
 #
 # Outputs (written to output_folder):
@@ -21,26 +21,37 @@ library(tidyverse)
 library(janitor)
 library(sf)
 library(terra)
+library(here)
+library(glue)
 
 ############################
 # USER SETTINGS — edit these
 ############################
 
 # Temp directory (R uses this for large file operations)
-Sys.setenv(VROOM_TEMP_PATH = "C:/Users/bhuan/Documents/R_temp")
-Sys.setenv(TMPDIR          = "C:/Users/bhuan/Documents/R_temp")
-Sys.setenv(TMP             = "C:/Users/bhuan/Documents/R_temp")
-Sys.setenv(TEMP            = "C:/Users/bhuan/Documents/R_temp")
-dir.create("C:/Users/bhuan/Documents/R_temp", showWarnings = FALSE, recursive = TRUE)
+dir_tmp  <- here("tmp")
+dir_data <- here("data")
+dir_out  <- here("outputs")
+dir.create(dir_tmp, showWarnings = F)
+Sys.setenv(VROOM_TEMP_PATH = dir_tmp)
+Sys.setenv(TMPDIR          = dir_tmp)
+Sys.setenv(TMP             = dir_tmp)
+Sys.setenv(TEMP            = dir_tmp)
+# dir.create("C:/Users/bhuan/Documents/R_temp", showWarnings = FALSE, recursive = TRUE)
 
 # Folder containing this program's CSV files.
 # Chunk suffix (e.g. _1, _2) is stripped automatically for output naming.
-program_folder <- "C:/Users/bhuan/Downloads/Monitoring Data/CalCOFI_5"
+# program_folder <- "C:/Users/bhuan/Downloads/Monitoring Data/CalCOFI_5"
+program_folder <- glue("{dir_data}/CalCOFI_5")
 
-output_root   <- "C:/Users/bhuan/Downloads/Monitoring_Outputs"
-ca_boundary_path    <- "C:/Users/bhuan/Downloads/Monitoring Data/ca_state/CA_State.shp"
-attribute_table_path <- "C:/Users/bhuan/Downloads/Monitoring Data/Attribute_Table.csv"
-gebco_raster_path <- "C:/Users/bhuan/Downloads/Monitoring_Outputs/gebco_2025_n48.0_s30.0_w-130.0_e-110.0_geotiff.tif"
+# output_root   <- "C:/Users/bhuan/Downloads/Monitoring_Outputs"
+# ca_boundary_path    <- "C:/Users/bhuan/Downloads/Monitoring Data/ca_state/CA_State.shp"
+# attribute_table_path <- "C:/Users/bhuan/Downloads/Monitoring Data/Attribute_Table.csv"
+# gebco_raster_path <- "C:/Users/bhuan/Downloads/Monitoring_Outputs/gebco_2025_n48.0_s30.0_w-130.0_e-110.0_geotiff.tif"
+output_root          <- dir_out
+ca_boundary_path     <- glue("{dir_out}/ca_state/CA_State.shp")
+attribute_table_path <- glue("{dir_out}/Attribute_Table.csv")
+gebco_raster_path    <- glue("{dir_out}/gebco_2025_n48.0_s30.0_w-130.0_e-110.0_geotiff.tif")
 
 start_year         <- 2000    # Exclude records before this year
 active_cutoff_year <- 2015    # Programs with no data after this year are flagged inactive
