@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>California Ocean &amp; Coastal Monitoring</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; display: flex; flex-direction: column; height: 100vh; }
+
+  /* ── Header ── */
+  #header { background: #1a3a5c; color: white; padding: 12px 20px; font-size: 18px; font-weight: bold; }
+
+  /* ── Filter bar ── */
+  #controls { background: #f5f5f5; padding: 10px 20px; display: flex; gap: 16px;
+              align-items: flex-start; flex-wrap: wrap; border-bottom: 1px solid #ddd; }
+  #controls label { font-size: 13px; font-weight: bold; color: #333; display: block; margin-bottom: 4px; }
+  #controls select { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px;
+                     font-size: 13px; min-width: 180px; }
+  #controls button { padding: 6px 14px; background: #1a3a5c; color: white; border: none;
+                     border-radius: 4px; cursor: pointer; font-size: 13px; }
+  #controls button:hover { background: #2a5a8c; }
+  #status { font-size: 12px; color: #666; align-self: center; }
+
+  /* ── Map + legend ── */
+  #map { flex: 1; position: relative; }
+  #legend { position: absolute; bottom: 30px; right: 10px; z-index: 1000;
+            background: white; padding: 10px 14px; border-radius: 6px;
+            border: 1px solid #ccc; font-size: 13px; min-width: 170px; }
+  #legend h4 { margin-bottom: 8px; font-size: 15px; font-weight: bold; color: #333; }
+  .legend-item { display: flex; align-items: center; gap: 7px; margin-bottom: 5px;
+                 cursor: pointer; border-radius: 3px; padding: 2px 3px; transition: opacity 0.15s; }
+  .legend-item:hover { background: #f0f4f8; }
+  .legend-item.hidden-prog { opacity: 0.3; }
+  .legend-item input[type=checkbox] { width: 13px; height: 13px; cursor: pointer;
+                                      flex-shrink: 0; margin: 0; accent-color: #555; }
+  .legend-line   { width: 24px; height: 3px; border-radius: 1px; flex-shrink: 0; }
+  .legend-circle { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+                   border: 1.5px solid rgba(0,0,0,0.25); }
+  .legend-divider { border: none; border-top: 1px solid #ddd; margin: 6px 0; }
+
+  /* ── Toggle controls (transects, dischargers) ── */
+  .toggle-wrap { display: flex; flex-direction: column; }
+  .toggle-wrap > label { font-size: 13px; font-weight: bold; color: #333; margin-bottom: 4px; }
+  .toggle-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+                background: white; border: 1px solid #ccc; border-radius: 4px;
+                cursor: pointer; min-width: 160px; user-select: none; }
+  .toggle-row input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color: #1a3a5c; }
+  .toggle-row span { font-size: 13px; color: #333; }
+  .toggle-status { font-size: 11px; color: #888; margin-top: 2px; }
+
+  /* ── Parameter multi-select dropdown ── */
+  .dropdown-btn { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px;
+                  font-size: 13px; min-width: 200px; background: white; cursor: pointer;
+                  display: flex; justify-content: space-between; align-items: center;
+                  gap: 8px; user-select: none; }
+  .dropdown-btn:hover { border-color: #999; }
+  .dropdown-panel { display: none; position: absolute; top: 100%; left: 0; z-index: 9999;
+                    background: white; border: 1px solid #ccc; border-radius: 4px;
+                    max-height: 260px; overflow-y: auto; min-width: 220px;
+                    box-shadow: 0 3px 8px rgba(0,0,0,0.15); }
+  .dropdown-actions { padding: 6px 10px; border-bottom: 1px solid #eee;
+                      display: flex; gap: 12px; background: #fafafa; }
+  .dropdown-actions span { cursor: pointer; color: #1a3a5c; font-size: 12px; }
+  .dropdown-actions span:hover { text-decoration: underline; }
+  .dropdown-search { padding: 6px 10px; border-bottom: 1px solid #eee; }
+  .dropdown-search input { width: 100%; padding: 4px 8px; border: 1px solid #ddd;
+                           border-radius: 3px; font-size: 12px; }
+  .param-option { padding: 4px 10px; display: flex; align-items: center; gap: 6px;
+                  cursor: pointer; font-size: 13px; white-space: nowrap; }
+  .param-option:hover { background: #f0f4f8; }
+  .param-option input[type=checkbox] { cursor: pointer; flex-shrink: 0; }
+
+  .btn-row { display: flex; gap: 6px; align-self: flex-end; padding-bottom: 2px; }
+
+  /* ── Popup shell (shared) ── */
+  .leaflet-popup-content-wrapper { border-radius: 6px; padding: 0; overflow: hidden;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.22); min-width: 300px; max-width: 420px; }
+  .leaflet-popup-content { margin: 0 !important; width: 100% !important; }
+  .leaflet-popup-tip-container { margin-top: -1px; }
+  .leaflet-popup-close-button { color: rgba(255,255,255,0.8) !important; font-size: 18px !important;
+                                 top: 8px !important; right: 10px !important; }
+  .leaflet-popup-close-button:hover { color: #fff !important; }
+
+  /* ── Monitoring hex popup (blue) ── */
+  .pp-header { background: #1a3a5c; color: #fff; padding: 14px 36px 12px 18px; }
+  .pp-header.transect-header { background: #1e5c40; }
+  .pp-title    { font-size: 16px; font-weight: 700; line-height: 1.3; margin-bottom: 3px; }
+  .pp-subtitle { font-size: 11px; opacity: 0.75; font-style: italic; }
+  .pp-narrative { background: #eef4f9; padding: 9px 18px; font-size: 12px; color: #333;
+                  border-bottom: 1px solid #d0e3ef; line-height: 1.55; }
+  .pp-narrative.transect-narrative { background: #eef4ee; border-bottom-color: #c5dfc5; }
+  .pp-narrative b { color: #1a3a5c; }
+  .pp-narrative.transect-narrative b { color: #1e5c40; }
+  .pp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .pp-table tr:nth-child(even) td { background: #f7f9fb; }
+  .pp-table td { padding: 6px 18px; vertical-align: top;
+                 border-bottom: 1px solid #ececec; line-height: 1.45; }
+  .pp-table td:first-child { font-weight: 600; color: #555; white-space: nowrap; width: 36%; }
+  .pp-table td:last-child { color: #111; }
+  .pp-section-head td { background: #dde8f0 !important; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.07em; color: #1a3a5c; padding: 5px 18px; }
+  .pp-section-head.transect-section td { background: #d5e8d5 !important; color: #1e5c40; }
+
+  /* ── Discharger popup (gray) ── */
+  .dp-header   { background: #4a4a4a; color: #fff; padding: 14px 36px 12px 18px; }
+  .dp-title    { font-size: 15px; font-weight: 700; line-height: 1.3; margin-bottom: 3px; }
+  .dp-subtitle { font-size: 13px; opacity: 0.88; font-style: italic; }
+  .dp-narrative { background: #f3f3f3; padding: 9px 18px; font-size: 12px; color: #333;
+                  border-top: 1px solid #ddd; line-height: 1.55; }
+  .dp-narrative b { color: #4a4a4a; }
+  .dp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .dp-table tr:nth-child(even) td { background: #f5f5f5; }
+  .dp-table td { padding: 6px 18px; vertical-align: top;
+                 border-bottom: 1px solid #e0e0e0; line-height: 1.45; }
+  .dp-table td:first-child { font-weight: 600; color: #4a4a4a; white-space: nowrap; width: 38%; }
+  .dp-table td:last-child  { color: #111; }
+  .dp-section-head td { background: #e0e0e0 !important; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.07em; color: #3a3a3a; padding: 5px 18px; }
+</style>
+</head>
+<body>
+
+<!-- SVG pattern defs for hex fill patterns -->
+<svg style="position:absolute;width:0;height:0;overflow:hidden;" xmlns="http://www.w3.org/2000/svg">
+  <defs id="pattern-defs"></defs>
+</svg>
+
+<div id="header">California Ocean &amp; Coastal Monitoring Inventory</div>
+
+<div id="controls">
+
+  <div>
+    <label>Program</label>
+    <select id="filter-program"><option value="">All Programs</option></select>
+  </div>
+
+  <div style="position:relative;">
+    <label>Parameter</label>
+    <div class="dropdown-btn" id="param-btn" onclick="toggleParamDropdown()">
+      <span id="param-label">All Parameters</span>
+      <span style="font-size:10px;">&#9660;</span>
+    </div>
+    <div class="dropdown-panel" id="param-panel">
+      <div class="dropdown-actions">
+        <span onclick="selectAllParams()">Select all</span>
+        <span onclick="clearAllParams()" style="color:#888;">Clear</span>
+      </div>
+      <div class="dropdown-search">
+        <input type="text" id="param-search" placeholder="Search parameters..." oninput="filterParamList()">
+      </div>
+      <div id="param-checkbox-list"></div>
+    </div>
+  </div>
+
+  <div>
+    <label>EOV Group</label>
+    <select id="filter-eov">
+      <option value="">All Groups</option>
+      <option value="Physical">Physical</option>
+      <option value="Biogeochemical">Biogeochemical</option>
+      <option value="Biological">Biological/Ecosystem</option>
+    </select>
+  </div>
+
+  <div class="toggle-wrap">
+    <label>Transects</label>
+    <label class="toggle-row" title="Load transect lines from transects.csv">
+      <input type="checkbox" id="transect-toggle" onchange="toggleTransects()">
+      <span>Show Survey Transects</span>
+    </label>
+    <div class="toggle-status" id="transect-status">Not loaded</div>
+  </div>
+
+  <div class="toggle-wrap">
+    <label>Dischargers</label>
+    <label class="toggle-row" title="Show WWTP / discharger monitoring stations">
+      <input type="checkbox" id="discharger-toggle" onchange="toggleDischargers()">
+      <span>Show Dischargers</span>
+    </label>
+    <div class="toggle-status" id="discharger-status">Not loaded</div>
+  </div>
+
+  <div class="btn-row">
+    <button onclick="applyFilters()">Apply</button>
+    <button onclick="zoomToResults()" style="background:#2a6496;">Zoom to Results</button>
+    <button onclick="resetFilters()" style="background:#888;">Reset</button>
+  </div>
+
+  <div id="status"></div>
+</div>
+
+<div id="map">
+  <div id="legend"></div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// CONFIG
+// Add entries here for each discharger GeoJSON to load.
+// path is relative to this HTML file (i.e. inside Monitoring_Outputs/).
+// ════════════════════════════════════════════════════════════
+const DISCHARGER_SOURCES = [
+  { path: 'Dischargers/Dischargers.geojson', label: 'Dischargers' }
+];
+
+// Colors cycle per unique facility name across all discharger sources
+const DISCHARGER_PALETTE = [
+  { fill: '#6a9e9e', border: '#3a6b6b' },  // muted teal
+  { fill: '#9e7a7a', border: '#6b4a4a' },  // dusty rose
+  { fill: '#7a8a9e', border: '#4a5b6e' },  // slate blue
+  { fill: '#7a9e7e', border: '#4a6b4e' },  // muted sage
+  { fill: '#8a7a9e', border: '#5a4b6e' },  // dusty purple
+  { fill: '#9e9e8a', border: '#6b6b5a' }   // warm gray
+];
+const dischargerColorMap = {};
+let dischargerPaletteIndex = 0;
+
+function getDischargerColor(facilityName) {
+  if (!dischargerColorMap[facilityName]) {
+    dischargerColorMap[facilityName] =
+      DISCHARGER_PALETTE[dischargerPaletteIndex % DISCHARGER_PALETTE.length];
+    dischargerPaletteIndex++;
+  }
+  return dischargerColorMap[facilityName];
+}
+
+// ════════════════════════════════════════════════════════════
+// MAP INIT
+// ════════════════════════════════════════════════════════════
+const map = L.map('map').setView([36.5, -122.5], 6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+// ── State ────────────────────────────────────────────────────
+const programColors   = {};
+const programPatIds   = {};
+const colorList       = ['#e41a1c','#377eb8','#4daf4a','#984ea3','#ff7f00','#a65628','#f781bf','#008080'];
+const patternTypeList = ['dots','diag','crosshatch','horiz','vert','revdiag','dotgrid','diamonds'];
+let colorIndex     = 0;
+let currentFiltered = [];
+let allFeatures     = [];
+let hexLayer        = L.layerGroup().addTo(map);
+let visiblePrograms = new Set();
+
+let transectLayer    = L.layerGroup();
+let transectLoaded   = false;
+let transectFeatures = [];
+
+let dischargerLayer  = L.layerGroup();
+let dischargerLoaded = false;
+let dischargerCount  = 0;
+
+// ════════════════════════════════════════════════════════════
+// SVG PATTERN FILLS (for hex polygons)
+// Each program gets a unique color + pattern combination.
+// ════════════════════════════════════════════════════════════
+const NS = 'http://www.w3.org/2000/svg';
+
+function addEl(parent, tag, attrs) {
+  const el = document.createElementNS(NS, tag);
+  Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+  parent.appendChild(el);
+  return el;
+}
+
+function createPattern(id, color, type) {
+  const defs = document.getElementById('pattern-defs');
+  if (document.getElementById(id)) return;
+  const pat = document.createElementNS(NS, 'pattern');
+  pat.setAttribute('id', id);
+  pat.setAttribute('patternUnits', 'userSpaceOnUse');
+  pat.setAttribute('width', '10');
+  pat.setAttribute('height', '10');
+  addEl(pat, 'rect', { width: '10', height: '10', fill: color });
+  const dk = 'rgba(0,0,0,0.28)';
+  if      (type === 'dots')      { addEl(pat, 'circle', { cx:'5', cy:'5', r:'2', fill: dk }); }
+  else if (type === 'diag')      { addEl(pat, 'line', { x1:'0', y1:'10', x2:'10', y2:'0', stroke: dk, 'stroke-width':'1.8' });
+                                   addEl(pat, 'line', { x1:'-5', y1:'5', x2:'5', y2:'-5', stroke: dk, 'stroke-width':'1.8' });
+                                   addEl(pat, 'line', { x1:'5', y1:'15', x2:'15', y2:'5', stroke: dk, 'stroke-width':'1.8' }); }
+  else if (type === 'crosshatch'){ addEl(pat, 'line', { x1:'0', y1:'10', x2:'10', y2:'0', stroke: dk, 'stroke-width':'1.2' });
+                                   addEl(pat, 'line', { x1:'0', y1:'0', x2:'10', y2:'10', stroke: dk, 'stroke-width':'1.2' }); }
+  else if (type === 'horiz')     { addEl(pat, 'line', { x1:'0', y1:'5', x2:'10', y2:'5', stroke: dk, 'stroke-width':'2.5' }); }
+  else if (type === 'vert')      { addEl(pat, 'line', { x1:'5', y1:'0', x2:'5', y2:'10', stroke: dk, 'stroke-width':'2.5' }); }
+  else if (type === 'revdiag')   { addEl(pat, 'line', { x1:'0', y1:'0', x2:'10', y2:'10', stroke: dk, 'stroke-width':'1.8' });
+                                   addEl(pat, 'line', { x1:'-5', y1:'5', x2:'5', y2:'15', stroke: dk, 'stroke-width':'1.8' });
+                                   addEl(pat, 'line', { x1:'5', y1:'-5', x2:'15', y2:'5', stroke: dk, 'stroke-width':'1.8' }); }
+  else if (type === 'dotgrid')   { [2,7].forEach(cx => [2,7].forEach(cy => addEl(pat, 'circle', { cx, cy, r:'1.4', fill: dk }))); }
+  else if (type === 'diamonds')  { addEl(pat, 'polygon', { points:'5,0 10,5 5,10 0,5', fill:'none', stroke: dk, 'stroke-width':'1.8' }); }
+  defs.appendChild(pat);
+}
+
+function getPatternId(prog) {
+  if (programPatIds[prog]) return programPatIds[prog];
+  const color = getColor(prog);
+  const type  = patternTypeList[colorIndex % patternTypeList.length];
+  const id    = 'pat-' + prog.replace(/[^a-zA-Z0-9]/g, '-');
+  programPatIds[prog] = id;
+  createPattern(id, color, type);
+  return id;
+}
+
+// ════════════════════════════════════════════════════════════
+// DISCHARGER POPUP
+// ════════════════════════════════════════════════════════════
+function valD(v) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  return (s === '' || s.toLowerCase() === 'na' || s.toLowerCase() === 'null') ? null : s;
+}
+
+function prettifyKey(k) {
+  return k.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase()).replace('Per ','/ ');
+}
+
+function makeDischargerPopup(p) {
+  function drow(label, value) {
+    if (!valD(value)) return '';
+    return `<tr><td>${label}</td><td>${value}</td></tr>`;
+  }
+  function dhead(label) {
+    return `<tr class="dp-section-head"><td colspan="2">${label}</td></tr>`;
+  }
+
+  const titleVal = valD(p['facility_name']) || valD(p['acrynom']) ||
+                   valD(p['site_name']) || 'Discharger Station';
+  const subVal   = valD(p['station_type']) || '';
+
+  const skipAll = new Set([
+    'point_id','n_rows','latitude_std','Latitude_std','longitude_std','Longitude_std',
+    'facility_name','station_type','parameter','parameters',
+    'frequency','monitoring_frequency','sampling_frequency',
+    'latitude_u_n','longitude_u_w','source_files'
+  ]);
+
+  let rows = dhead('Station Details');
+  Object.keys(p).filter(k => !skipAll.has(k) && valD(p[k])).sort().forEach(k => {
+    rows += drow(prettifyKey(k), valD(p[k]));
+  });
+  if (valD(p['site_name']))  rows += drow('Site Name', valD(p['site_name']));
+  if (valD(p['acrynom']))    rows += drow('Acronym',   valD(p['acrynom']));
+  if (valD(p['frequency']))  rows += drow('Frequency', valD(p['frequency']));
+
+  const latVal = valD(p['latitude_std'])  || valD(p['Latitude_std'])  || valD(p['latitude_u_n']);
+  const lonVal = valD(p['longitude_std']) || valD(p['Longitude_std']) || valD(p['longitude_u_w']);
+  if (latVal || lonVal) {
+    rows += dhead('Location');
+    if (latVal) rows += drow('Latitude',  parseFloat(latVal).toFixed(5));
+    if (lonVal) rows += drow('Longitude', parseFloat(lonVal).toFixed(5));
+  }
+
+  const paramVal = valD(p['parameter']) || valD(p['parameters']);
+  const paramNarrative = paramVal
+    ? `<div class="dp-narrative"><b>Parameters:</b> ${paramVal.split(';').map(s => s.trim()).filter(Boolean).join('; ')}</div>`
+    : '';
+
+  return `<div class="dp-header">
+    <div class="dp-title">${titleVal}</div>
+    ${subVal ? `<div class="dp-subtitle">${subVal}</div>` : ''}
+  </div><table class="dp-table">${rows}</table>${paramNarrative}`;
+}
+
+// ════════════════════════════════════════════════════════════
+// DISCHARGER LOAD + TOGGLE
+// ════════════════════════════════════════════════════════════
+function loadDischargers() {
+  const statusEl = document.getElementById('discharger-status');
+  statusEl.textContent = 'Loading…';
+  dischargerLayer.clearLayers();
+  dischargerCount = 0;
+
+  const fetches = DISCHARGER_SOURCES.map(src =>
+    fetch(src.path)
+      .then(r => {
+        if (!r.ok) throw new Error(src.path + ' not found (HTTP ' + r.status + ')');
+        return r.json();
+      })
+      .then(data => {
+        if (!data.features || data.features.length === 0) return;
+        data.features.forEach(feature => {
+          const layer = L.geoJSON(feature, {
+            pointToLayer: (f, latlng) => {
+              const facilityKey = valD(f.properties['facility_name']) ||
+                                  valD(f.properties['acrynom']) ||
+                                  valD(f.properties['site_name']) || 'Unknown';
+              const colors = getDischargerColor(facilityKey);
+              return L.circleMarker(latlng, {
+                radius: 7, fillColor: colors.fill, color: colors.border,
+                weight: 1.5, opacity: 1, fillOpacity: 0.88
+              });
+            },
+            onEachFeature: (f, lyr) => {
+              lyr.bindPopup(makeDischargerPopup(f.properties), { maxWidth: 420 });
+              lyr.on('mouseover', function() { this.setStyle({ fillOpacity: 1, radius: 9 }); });
+              lyr.on('mouseout',  function() { this.setStyle({ fillOpacity: 0.88, radius: 7 }); });
+            }
+          });
+          layer.addTo(dischargerLayer);
+          dischargerCount++;
+        });
+      })
+      .catch(err => { statusEl.textContent = '⚠ ' + err.message; })
+  );
+
+  Promise.all(fetches).then(() => {
+    dischargerLoaded = true;
+    statusEl.textContent = dischargerCount + ' station' + (dischargerCount !== 1 ? 's' : '');
+    buildLegend();
+  });
+}
+
+function toggleDischargers() {
+  const on = document.getElementById('discharger-toggle').checked;
+  if (on) {
+    dischargerLayer.addTo(map);
+    if (!dischargerLoaded) loadDischargers();
+    else document.getElementById('discharger-status').textContent =
+      dischargerCount + ' station' + (dischargerCount !== 1 ? 's' : '');
+  } else {
+    dischargerLayer.remove();
+    document.getElementById('discharger-status').textContent = 'Hidden';
+  }
+  buildLegend();
+}
+
+// ════════════════════════════════════════════════════════════
+// TRANSECTS
+// Loads transects.csv, validates CA coordinates,
+// draws polylines with survey metadata popups.
+// ════════════════════════════════════════════════════════════
+const SURVEY_LABELS = {
+  'NMF':'NMFS Rockfish Survey', 'CCE':'CalCOFI Cruise',
+  'CPR':'CPR Cruise', 'CAC':'CalCOFI Acoustic Cruise', 'CAL':'CalCOFI Cruise'
+};
+const CA_BOUNDS = { minLat:29.0, maxLat:43.0, minLon:-126.0, maxLon:-115.0 };
+
+function inCABounds(lat,lon) {
+  return lat>=CA_BOUNDS.minLat&&lat<=CA_BOUNDS.maxLat&&lon>=CA_BOUNDS.minLon&&lon<=CA_BOUNDS.maxLon;
+}
+function distanceKm(lat1,lon1,lat2,lon2) {
+  const R=6371,dLat=(lat2-lat1)*Math.PI/180,dLon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function isValidTransect(latS,lonS,latE,lonE) {
+  return inCABounds(latS,lonS) && inCABounds(latE,lonE) &&
+         lonS<=0 && lonE<=0 && distanceKm(latS,lonS,latE,lonE)<=200;
+}
+function depthZone(m) { return m<=200?'continental shelf':m<=1000?'mesopelagic':'deep ocean'; }
+function formatDepth(raw) {
+  const d=parseFloat(raw); if(isNaN(d)) return null;
+  const abs=Math.abs(d); return abs+' m below sea level ('+depthZone(abs)+')';
+}
+function getCoord(row,...keys) {
+  for(const k of keys){const v=parseFloat(row[k]);if(!isNaN(v))return v;} return NaN;
+}
+function fmtCoord(lat,lon) {
+  if(isNaN(lat)||isNaN(lon)) return null;
+  return Math.abs(lat).toFixed(4)+'°'+(lat>=0?'N':'S')+', '+Math.abs(lon).toFixed(4)+'°'+(lon<=0?'W':'E');
+}
+function parseCSV(text) {
+  const lines=text.trim().split('\n'); if(lines.length<2) return [];
+  const headers=lines[0].split(',').map(h=>h.trim().replace(/^"|"$/g,''));
+  return lines.slice(1).map(line=>{
+    const vals=line.split(',').map(v=>v.trim().replace(/^"|"$/g,''));
+    const obj={}; headers.forEach((h,i)=>{obj[h]=vals[i]||'';}); return obj;
+  });
+}
+function buildTransectPopup(row) {
+  const svyCode=row['SVY']||row['svy']||row['Survey']||row['survey']||'';
+  const survey=SURVEY_LABELS[svyCode]||(svyCode||'Unknown');
+  const date=row['Date']||row['date']||'';
+  const depth=formatDepth(row['Depth (m)']||row['depth_m']||row['depth']);
+  const latS=getCoord(row,'Latitude Start (º)','latitude_start');
+  const lonS=getCoord(row,'Longitude Start (º)','longitude_start');
+  const latE=getCoord(row,'Latitude Stop (º)','latitude_stop');
+  const lonE=getCoord(row,'Longitude Stop (º)','longitude_stop');
+  const coordStr=fmtCoord(latS,lonS);
+  const stopStr=fmtCoord(latE,lonE);
+  const fullCoord=coordStr?(coordStr+(stopStr&&stopStr!==coordStr?' → '+stopStr:'')):null;
+  let segLen=null;
+  if(!isNaN(latS)&&!isNaN(lonS)&&!isNaN(latE)&&!isNaN(lonE)){
+    const km=distanceKm(latS,lonS,latE,lonE);
+    segLen=km<1?(km*1000).toFixed(0)+' m':km.toFixed(1)+' km';
+  }
+  const params=row['Parameters']||row['parameters']||null;
+  const eovGrps=row['EOV Groups']||row['eov_groups']||null;
+  function trow(l,v){return(!v||v==='NA')? '':'<tr><td>'+l+'</td><td>'+v+'</td></tr>';}
+  function thead(l){return '<tr class="pp-section-head transect-section"><td colspan="2">'+l+'</td></tr>';}
+  const narrative=(params&&params!=='NA')
+    ?'<div class="pp-narrative transect-narrative"><b>Parameters:</b> '+params+'</div>'
+    :'<div class="pp-narrative transect-narrative" style="color:#999;font-style:italic;">Parameters in paired observation file.</div>';
+  const sRows=trow('Date',date)+trow('Survey',survey);
+  const tRows=trow('Start → Stop',fullCoord)+trow('Bottom Depth',depth)+trow('EOV Groups',eovGrps)+trow('Segment Length',segLen);
+  return '<div class="pp-header transect-header">' +
+    '<div class="pp-title">Survey Transect</div>' +
+    '<div class="pp-subtitle">'+survey+(date?' — '+date:'')+'</div></div>' +
+    narrative+'<table class="pp-table">'+(sRows?thead('Survey')+sRows:'')+(tRows?thead('Transect')+tRows:'')+'</table>';
+}
+function loadTransects() {
+  const statusEl=document.getElementById('transect-status');
+  statusEl.textContent='Loading…';
+  fetch('transects.csv')
+    .then(r=>{if(!r.ok)throw new Error('transects.csv not found');return r.text();})
+    .then(text=>{
+      const rows=parseCSV(text);
+      if(rows.length===0) throw new Error('No rows parsed');
+      transectLayer.clearLayers();
+      let drawn=0,clipped=0;
+      rows.forEach(row=>{
+        const latS=getCoord(row,'Latitude Start (º)','latitude_start');
+        const lonS=getCoord(row,'Longitude Start (º)','longitude_start');
+        const latM=getCoord(row,'Latitude Mid (º)','latitude_mid');
+        const lonM=getCoord(row,'Longitude Mid (º)','longitude_mid');
+        const latE=getCoord(row,'Latitude Stop (º)','latitude_stop');
+        const lonE=getCoord(row,'Longitude Stop (º)','longitude_stop');
+        if(isNaN(latS)||isNaN(lonS)||isNaN(latE)||isNaN(lonE)) return;
+        if(!isValidTransect(latS,lonS,latE,lonE)){clipped++;return;}
+        const coords=[[latS,lonS]];
+        if(!isNaN(latM)&&!isNaN(lonM)) coords.push([latM,lonM]);
+        coords.push([latE,lonE]);
+        const line=L.polyline(coords,{color:'#1e7a4a',weight:1.5,opacity:0.55});
+        line.bindPopup(buildTransectPopup(row),{maxWidth:400});
+        line.on('mouseover',function(){this.setStyle({color:'#0fa84e',weight:3,opacity:1});this.bringToFront();});
+        line.on('mouseout', function(){this.setStyle({color:'#1e7a4a',weight:1.5,opacity:0.55});});
+        line.addTo(transectLayer);drawn++;
+      });
+      transectLoaded=true; transectFeatures=rows;
+      statusEl.textContent=drawn.toLocaleString()+' transects'+(clipped>0?' ('+clipped.toLocaleString()+' outside CA clipped)':'');
+      buildLegend();
+    })
+    .catch(err=>{
+      document.getElementById('transect-toggle').checked=false;
+      statusEl.textContent='⚠ '+err.message;
+      transectLayer.remove();
+    });
+}
+function toggleTransects() {
+  const on=document.getElementById('transect-toggle').checked;
+  if(on){
+    transectLayer.addTo(map);
+    if(!transectLoaded) loadTransects();
+    else document.getElementById('transect-status').textContent=transectFeatures.length.toLocaleString()+' transects';
+  } else {
+    transectLayer.remove();
+    document.getElementById('transect-status').textContent='Hidden';
+  }
+  buildLegend();
+}
+
+// ════════════════════════════════════════════════════════════
+// MONITORING HEX LAYER
+// Loads Master_Inventory.geojson, draws patterned
+// hex polygons, populates filter dropdowns.
+// ════════════════════════════════════════════════════════════
+fetch('Master_Inventory.geojson')
+  .then(r=>r.json())
+  .then(data=>{
+    allFeatures=data.features;
+    currentFiltered=allFeatures;
+    populateDropdowns(allFeatures);
+    allFeatures.forEach(f=>{
+      const prog=normalizeProgram(getProp(f.properties,'Program Name','Program.Name')||'');
+      if(prog) visiblePrograms.add(prog);
+    });
+    renderFeatures(allFeatures);
+    updateStatus(allFeatures.length);
+    buildLegend();
+  })
+  .catch(err=>{ document.getElementById('status').textContent='Error loading GeoJSON: '+err.message; });
+
+function getProp(p,...keys) {
+  for(const k of keys){if(p[k]!==undefined&&p[k]!==null&&p[k]!==''&&p[k]!=='NA')return p[k];} return '';
+}
+function getColor(program) {
+  const norm=normalizeProgram(program);
+  if(!programColors[norm]){ programColors[norm]=colorList[colorIndex%colorList.length]; colorIndex++; }
+  return programColors[norm];
+}
+function normalizeProgram(name) {
+  if(!name) return name;
+  return name.replace(/([_\s]\d+|\d+)$/,'').trim();
+}
+function toggleProgram(prog, on) {
+  if(on) visiblePrograms.add(prog); else visiblePrograms.delete(prog);
+  applyFilters(); buildLegend();
+}
+function populateDropdowns(features) {
+  const programs=new Set(), params=new Set();
+  features.forEach(f=>{
+    const p=f.properties;
+    const prog=getProp(p,'Program Name','Program.Name');
+    if(prog) prog.split('; ').forEach(x=>programs.add(normalizeProgram(x.trim())));
+    const paramStr=getProp(p,'Parameters','parameters');
+    if(paramStr) paramStr.split('; ').forEach(x=>{if(x.trim())params.add(x.trim());});
+  });
+  const progSel=document.getElementById('filter-program');
+  [...programs].sort().forEach(prog=>{
+    const opt=document.createElement('option'); opt.value=prog; opt.textContent=prog;
+    progSel.appendChild(opt);
+  });
+  const list=document.getElementById('param-checkbox-list');
+  [...params].sort().forEach(param=>{
+    const div=document.createElement('div');
+    div.className='param-option'; div.dataset.param=param.toLowerCase();
+    div.innerHTML=`<input type="checkbox" value="${param}" onchange="updateParamLabel()" style="margin:0;width:14px;height:14px;"> <span>${param}</span>`;
+    list.appendChild(div);
+  });
+}
+function toggleParamDropdown() {
+  const panel=document.getElementById('param-panel');
+  panel.style.display=(panel.style.display==='block')?'none':'block';
+  if(panel.style.display==='block') document.getElementById('param-search').focus();
+}
+function filterParamList() {
+  const q=document.getElementById('param-search').value.toLowerCase();
+  document.querySelectorAll('.param-option').forEach(div=>{
+    div.style.display=div.dataset.param.includes(q)?'flex':'none';
+  });
+}
+function updateParamLabel() {
+  const checked=[...document.querySelectorAll('#param-checkbox-list input:checked')];
+  const label=document.getElementById('param-label');
+  if(checked.length===0) label.textContent='All Parameters';
+  else if(checked.length===1) label.textContent=checked[0].value;
+  else label.textContent=checked.length+' parameters selected';
+}
+function selectAllParams() {
+  document.querySelectorAll('#param-checkbox-list input').forEach(i=>{
+    if(i.closest('.param-option').style.display!=='none') i.checked=true;
+  });
+  updateParamLabel();
+}
+function clearAllParams() {
+  document.querySelectorAll('#param-checkbox-list input').forEach(i=>i.checked=false);
+  document.getElementById('param-search').value='';
+  filterParamList(); updateParamLabel();
+}
+document.addEventListener('click', function(e){
+  const btn=document.getElementById('param-btn'), panel=document.getElementById('param-panel');
+  if(!btn.contains(e.target)&&!panel.contains(e.target)) panel.style.display='none';
+});
+
+function renderFeatures(features) {
+  hexLayer.clearLayers();
+  features.forEach(f=>{
+    const p=f.properties;
+    const prog=normalizeProgram(getProp(p,'Program Name','Program.Name')||'Unknown');
+    if(!visiblePrograms.has(prog)) return;
+    const color=getColor(prog);
+    const layer=L.geoJSON(f,{
+      style:{ color, weight:1, fillColor:'url(#'+getPatternId(prog)+')', fillOpacity:1 }
+    });
+    layer.bindPopup(()=>buildHexPopup(p),{maxWidth:400});
+    layer.on('mouseover',function(){this.setStyle({weight:2.5,color:'#333'});});
+    layer.on('mouseout', function(){this.setStyle({weight:1,color});});
+    layer.addTo(hexLayer);
+  });
+}
+
+function buildHexPopup(p) {
+  const progName  = normalizeProgram(getProp(p,'Program Name','Program.Name'));
+  const fullName  = getProp(p,'Full Program Name','Full.Program.Name');
+  const parameters= getProp(p,'Parameters','parameters');
+  const lat       = getProp(p,'Centroid Latitude','Centroid.Latitude');
+  const lon       = getProp(p,'Centroid Longitude','Centroid.Longitude');
+  const eovRaw    = getProp(p,'EOV Groups','EOV.Groups');
+  const eovDisplay= eovRaw ? eovRaw.replace(/\bBiological\b/g,'Biological/Ecosystem') : '';
+  const narrative = parameters
+    ? `<div class="pp-narrative"><b>Parameters:</b> ${parameters}</div>` : '';
+
+  function row(l,v){ return (!v||v==='NA'||v==='null'||v==='')?'':`<tr><td>${l}</td><td>${v}</td></tr>`; }
+  function sh(l)   { return `<tr class="pp-section-head"><td colspan="2">${l}</td></tr>`; }
+
+  const depthRaw = getProp(p,'Depth Range (m)','Depth.Range..m.');
+  let depthSafe = '';
+  if (depthRaw) {
+    const nums = depthRaw.match(/-?([\d.]+)/g);
+    if (nums && nums.length === 1) {
+      depthSafe = '0–' + Math.abs(parseFloat(nums[0])) + ' m';
+    } else if (nums && nums.length >= 2) {
+      depthSafe = Math.abs(parseFloat(nums[0])) + '–' + Math.abs(parseFloat(nums[1])) + ' m';
+    } else {
+      depthSafe = depthRaw;
+    }
+  }
+
+  // GEBCO seafloor depth (pre-computed per hex in Master_Inventory.geojson)
+  const gebcoRaw = p['Gebco Mean Depth'] || p['Gebco.Mean.Depth'] || '';
+  let gebcoDisplay = '';
+  if (gebcoRaw && gebcoRaw !== 'NA' && !isNaN(parseFloat(gebcoRaw))) {
+    const v = Math.round(Math.abs(parseFloat(gebcoRaw)));
+    const zone = v<=200?'continental shelf':v<=1000?'mesopelagic':'deep ocean';
+    gebcoDisplay = v + ' m (' + zone + ')';
+  }
+
+  const sRows =
+    row('Frequency',        getProp(p,'Frequency')) +
+    row('Platform',         getProp(p,'Platform')) +
+    row('First Year',       getProp(p,'First Year','First.Year')) +
+    row('Last Year',        getProp(p,'Last Year','Last.Year')) +
+    row('Record Span (yrs)',getProp(p,'Years Sampled','Years.Sampled')) +
+    row('Sample Locations', getProp(p,'Sample Locations','Sample.Locations'));
+
+  const dRows =
+    row('Overall Range',  depthSafe) +
+    row('Seafloor Depth', gebcoDisplay);
+
+  const lRows =
+    row('Latitude',   lat ? parseFloat(lat).toFixed(4) : '') +
+    row('Longitude',  lon ? parseFloat(lon).toFixed(4) : '') +
+    row('EOV Groups', eovDisplay);
+
+  const tableRows =
+    (sRows ? sh('Sampling') + sRows : '') +
+    (dRows ? sh('Depth')    + dRows : '') +
+    (lRows ? sh('Location') + lRows : '');
+
+  return `<div class="pp-header">
+    <div class="pp-title">${progName||'Station'}</div>
+    ${fullName?`<div class="pp-subtitle">${fullName}</div>`:''}
+  </div>${narrative}<table class="pp-table">${tableRows}</table>`;
+}
+
+function applyFilters() {
+  const prog=document.getElementById('filter-program').value;
+  const selectedParams=[...document.querySelectorAll('#param-checkbox-list input:checked')].map(i=>i.value);
+  const eov=document.getElementById('filter-eov').value;
+  const eovValue=eov==='Biological / Ecosystem'?'Biological':eov;
+  currentFiltered=allFeatures.filter(f=>{
+    const p=f.properties;
+    const progName=getProp(p,'Program Name','Program.Name');
+    const params=getProp(p,'Parameters','parameters');
+    const eovGroups=getProp(p,'EOV Groups','EOV.Groups');
+    if(prog&&!normalizeProgram(progName).includes(prog)) return false;
+    if(selectedParams.length>0&&!selectedParams.some(sp=>params.includes(sp))) return false;
+    if(eovValue&&!eovGroups.includes(eovValue)) return false;
+    return true;
+  });
+  renderFeatures(currentFiltered);
+  updateStatus(currentFiltered.length);
+}
+function zoomToResults() {
+  const vis=currentFiltered.filter(f=>visiblePrograms.has(normalizeProgram(getProp(f.properties,'Program Name','Program.Name')||'')));
+  if(vis.length===0) return;
+  const bounds=L.geoJSON({type:'FeatureCollection',features:vis}).getBounds();
+  if(bounds.isValid()) map.fitBounds(bounds,{padding:[40,40]});
+}
+function resetFilters() {
+  document.getElementById('filter-program').value='';
+  document.getElementById('filter-eov').value='';
+  clearAllParams();
+  visiblePrograms.clear();
+  allFeatures.forEach(f=>{
+    const prog=normalizeProgram(getProp(f.properties,'Program Name','Program.Name')||'');
+    if(prog) visiblePrograms.add(prog);
+  });
+  currentFiltered=allFeatures;
+  renderFeatures(allFeatures);
+  updateStatus(allFeatures.length);
+  buildLegend();
+}
+function updateStatus(count) {
+  document.getElementById('status').textContent=`Showing ${count} hex cells`;
+}
+
+// ════════════════════════════════════════════════════════════
+// LEGEND
+// ════════════════════════════════════════════════════════════
+function buildLegend() {
+  const legend=document.getElementById('legend');
+  let html='<h4>Programs</h4>';
+  Object.entries(programColors).sort().forEach(([name,color])=>{
+    const visible=visiblePrograms.has(name);
+    const safe=name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const patId=programPatIds[name]||'';
+    const swatch=patId
+      ?`<svg width="22" height="16" style="border-radius:2px;border:1px solid rgba(0,0,0,0.15);flex-shrink:0;"><rect width="22" height="16" fill="url(#${patId})"/></svg>`
+      :`<div style="width:22px;height:16px;background:${color};border-radius:2px;border:1px solid rgba(0,0,0,0.15);flex-shrink:0;"></div>`;
+    html+=`<div class="legend-item${visible?'':' hidden-prog'}"
+      onclick="toggleProgram('${safe}',${!visible})" title="${visible?'Hide':'Show'} ${name}">
+      <input type="checkbox" ${visible?'checked':''} style="accent-color:#555;"
+        onclick="event.stopPropagation()" onchange="toggleProgram('${safe}',this.checked)">
+      ${swatch}<span>${name}</span>
+    </div>`;
+  });
+
+  if(document.getElementById('transect-toggle').checked){
+    html+='<hr class="legend-divider"><div class="legend-item" style="cursor:default;">' +
+      '<div class="legend-line" style="background:#1e7a4a;"></div><span>Survey Transects</span></div>';
+  }
+  if(document.getElementById('discharger-toggle').checked && Object.keys(dischargerColorMap).length > 0){
+    html+='<hr class="legend-divider"><div style="font-size:11px;font-weight:bold;color:#333;margin-bottom:4px;">Discharger Stations</div>';
+    Object.entries(dischargerColorMap).sort().forEach(([name, colors]) => {
+      html+=`<div class="legend-item" style="cursor:default;">
+        <div class="legend-circle" style="background:${colors.fill};border-color:${colors.border};border-width:1.5px;border-style:solid;"></div>
+        <span style="font-size:12px;">${name}</span></div>`;
+    });
+  }
+
+  legend.innerHTML=html;
+}
+</script>
+</body>
+</html>
